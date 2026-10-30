@@ -4885,9 +4885,15 @@ impl Shell {
         }
         // how others get in
         let info = match self.party.as_ref().map(|p| &p.role) {
-            Some(party::Role::Host { port }) => format!(
-                "You are hosting on port {port}.\n\nGive the other players your public IP address and this port. With playit.gg, make a TCP tunnel to 127.0.0.1:{port} and share the address it gives you (such as name.ply.gg:12345); a joinmc.link address works without the port. Any number of players can join."
-            ),
+            Some(party::Role::Host { port }) => {
+                let online = match self.party.as_ref().map(|p| p.online()) {
+                    Some(party::Online::Ready(a)) => format!("Share this address so anyone can join:\n{a}"),
+                    Some(party::Online::Opening) => "Opening an address anyone can join...".to_string(),
+                    Some(party::Online::Failed(e)) => format!("Could not open an internet address ({e})."),
+                    None => String::new(),
+                };
+                format!("{online}\n\nOn the same network: this PC's IP and port {port}. playit.gg also works: a TCP tunnel to 127.0.0.1:{port}.")
+            }
             Some(party::Role::Client { addr }) => format!("Connected to the party at {addr}."),
             None => "Host a party so others can connect to you, or join one with the host's address: an IP and port, or a playit.gg address.\n\nWhen the host joins a game, everyone in the party follows them into the same server.".to_string(),
         };

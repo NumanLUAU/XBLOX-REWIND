@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -71,6 +72,14 @@ pub enum Role {
     Client { addr: String },
 }
 
+/// The host's internet address through the public relay: still opening, ready, or failed.
+#[derive(Clone, Debug)]
+pub enum Online {
+    Opening,
+    Ready(String),
+    Failed(String),
+}
+
 struct Shared {
     host: u64,
     members: Vec<Member>,
@@ -85,6 +94,9 @@ pub struct Party {
     events: Receiver<Event>,
     /// client only: the connection to the host
     upstream: Option<TcpStream>,
+    /// host only: the relay address others can join from anywhere, and its off switch
+    online: Arc<Mutex<Online>>,
+    relay_stop: Arc<AtomicBool>,
 }
 
 fn send(stream: &mut TcpStream, msg: &Msg) -> bool {
@@ -95,20 +107,27 @@ fn send(stream: &mut TcpStream, msg: &Msg) -> bool {
 
 /// Reads one JSON message per line; None when the connection ends or misbehaves.
 fn lines(stream: TcpStream) -> impl Iterator<Item = Msg> {
-    let mut reader = BufReader::new(stream);
-    std::iter::from_fn(move || {
-        let mut buf = Vec::new();
-        loop {
-            buf.clear();
-            let n = (&mut reader).take(MAX_LINE as u64 + 1).read_until(b'\n', &mut buf).ok()?;
-            if n == 0 || buf.len() > MAX_LINE {
-                return None;
-            }
-            if let Ok(m) = serde_json::from_slice::<Msg>(&buf) {
-                return Some(m);
-            }
+    lines_from(BufReader::new(stream))
+}
+
+fn lines_from(mut reader: BufReader<TcpStream>) -> impl Iterator<Item = Msg> {
+    std::iter::from_fn(move || read_msg(&mut reader))
+}
+
+/// The next message. Anything in front of the JSON on a line (a tunnel's PROXY header) is skipped.
+fn read_msg(reader: &mut BufReader<TcpStream>) -> Option<Msg> {
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        let n = reader.take(MAX_LINE as u64 + 1).read_until(b'\n', &mut buf).ok()?;
+        if n == 0 || buf.len() > MAX_LINE {
+            return None;
         }
-    })
+        let start = buf.iter().position(|&b| b == b'{').unwrap_or(0);
+        if let Ok(m) = serde_json::from_slice::<Msg>(&buf[start..]) {
+            return Some(m);
+        }
+    }
 }
 
 use std::io::Read;
@@ -131,6 +150,22 @@ impl Party {
             }
         }
         let listener = listener.ok_or_else(|| std::io::Error::other("no free port"))?;
+        // an address anyone can join from, opened in the background
+        let online = Arc::new(Mutex::new(Online::Opening));
+        let relay_stop = Arc::new(AtomicBool::new(false));
+        {
+            let (online, stop) = (online.clone(), relay_stop.clone());
+            std::thread::spawn(move || {
+                let r = open_relay(port, stop);
+                if std::env::var("XBOX_PARTY").is_ok() {
+                    eprintln!("party relay {r:?}");
+                }
+                *online.lock().unwrap() = match r {
+                    Ok(addr) => Online::Ready(addr),
+                    Err(e) => Online::Failed(e.to_string()),
+                };
+            });
+        }
         let (tx, events) = channel();
         let uid = me.uid;
         let shared = Arc::new(Mutex::new(Shared { host: uid, members: vec![me], clients: HashMap::new() }));
@@ -143,7 +178,7 @@ impl Party {
                 std::thread::spawn(move || host_client(stream, sh, tx));
             }
         });
-        Ok(Party { role: Role::Host { port }, me: uid, shared, events, upstream: None })
+        Ok(Party { role: Role::Host { port }, me: uid, shared, events, upstream: None, online, relay_stop })
     }
 
     /// Join the party hosted at `addr`: an IP or host name, with or without a port, as typed or
@@ -153,30 +188,28 @@ impl Party {
         if targets.is_empty() {
             return Err(std::io::Error::other(format!("could not find \"{}\"", addr.trim())));
         }
+        // a connection only counts once the host answers with the party: a tunnel or port that
+        // accepts connections but leads nowhere is skipped
         let mut last = std::io::Error::other("no address to connect to");
-        let mut stream = None;
+        let mut joined = None;
         for t in &targets {
-            match TcpStream::connect_timeout(t, Duration::from_secs(4)) {
-                Ok(s) => {
-                    stream = Some(s);
+            match handshake(t, &me) {
+                Ok(j) => {
+                    joined = Some(j);
                     break;
                 }
                 Err(e) => last = e,
             }
         }
-        let Some(mut stream) = stream else { return Err(last) };
-        stream.set_nodelay(true).ok();
+        let Some((stream, mut reader, first)) = joined else { return Err(last) };
         let uid = me.uid;
-        if !send(&mut stream, &Msg::Hello { me: me.clone() }) {
-            return Err(std::io::Error::other("could not reach the host"));
-        }
         let (tx, events) = channel();
         let shared = Arc::new(Mutex::new(Shared { host: 0, members: vec![me], clients: HashMap::new() }));
         let sh = shared.clone();
-        let reader = stream.try_clone()?;
         let mut writer = stream.try_clone()?;
         std::thread::spawn(move || {
-            for m in lines(reader) {
+            let first = std::iter::once(first);
+            for m in first.chain(std::iter::from_fn(move || read_msg(&mut reader))) {
                 match m {
                     Msg::State { host, members } => {
                         let mut s = sh.lock().unwrap();
@@ -208,7 +241,12 @@ impl Party {
             }
             let _ = tx.send(Event::Ended("Lost the connection to the party host.".into()));
         });
-        Ok(Party { role: Role::Client { addr: addr.to_string() }, me: uid, shared, events, upstream: Some(stream) })
+        Ok(Party { role: Role::Client { addr: addr.to_string() }, me: uid, shared, events, upstream: Some(stream), online: Arc::new(Mutex::new(Online::Failed(String::new()))), relay_stop: Arc::new(AtomicBool::new(true)) })
+    }
+
+    /// Host only: the internet address of the party (through the relay).
+    pub fn online(&self) -> Online {
+        self.online.lock().unwrap().clone()
     }
 
     pub fn is_host(&self) -> bool {
@@ -269,6 +307,7 @@ impl Party {
 
     /// Leave; the host closes the party for everyone.
     pub fn leave(self) {
+        self.relay_stop.store(true, Ordering::Relaxed);
         if let Some(up) = self.upstream {
             let _ = up.shutdown(Shutdown::Both);
             return;
@@ -375,6 +414,102 @@ fn host_client(stream: TcpStream, sh: Arc<Mutex<Shared>>, tx: Sender<Event>) {
     s.members.retain(|m| m.uid != uid);
     broadcast_state(&mut s);
     let _ = tx.send(Event::Members);
+}
+
+/// Connect to one address, say hello and wait for the host's answer (the party, or why it
+/// turned us away). Returns the connection, its reader and that first message.
+fn handshake(target: &SocketAddr, me: &Member) -> std::io::Result<(TcpStream, BufReader<TcpStream>, Msg)> {
+    let mut stream = TcpStream::connect_timeout(target, Duration::from_secs(5))?;
+    stream.set_nodelay(true).ok();
+    if !send(&mut stream, &Msg::Hello { me: me.clone() }) {
+        return Err(std::io::Error::other("could not reach the host"));
+    }
+    stream.set_read_timeout(Some(Duration::from_secs(8)))?;
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let first = read_msg(&mut reader).ok_or_else(|| std::io::Error::other(format!("{target} accepted the connection but the party host never answered (is the tunnel running and pointing at the host's port?)")))?;
+    // a duplicated socket keeps its own timeout on Windows: clear it on both, or a quiet party
+    // (no news for 8 seconds) would look like a lost host
+    stream.set_read_timeout(None)?;
+    reader.get_ref().set_read_timeout(None)?;
+    Ok((stream, reader, first))
+}
+
+// >> relay
+// The public bore.pub relay (github.com/ekzhang/bore): the host keeps one control connection
+// to it, gets a port there, and for every player who connects to bore.pub:<port> opens a second
+// connection, names the player's connection id, and pipes it to the party port. Plain TCP over
+// IPv4, so it works where UDP tunnels and IPv6 routes do not.
+
+const RELAY_HOST: &str = "bore.pub";
+const RELAY_CONTROL: u16 = 7835;
+
+/// bore.pub's IPv4 address.
+fn relay_addr() -> std::io::Result<SocketAddr> {
+    (RELAY_HOST, RELAY_CONTROL).to_socket_addrs()?.find(|a| a.is_ipv4()).ok_or_else(|| std::io::Error::other("the relay has no IPv4 address"))
+}
+
+fn relay_send(s: &mut TcpStream, v: &serde_json::Value) -> std::io::Result<()> {
+    let mut b = serde_json::to_vec(v)?;
+    b.push(0);
+    s.write_all(&b)
+}
+
+fn relay_read(r: &mut BufReader<TcpStream>) -> std::io::Result<serde_json::Value> {
+    let mut b = Vec::new();
+    r.take(4096).read_until(0, &mut b)?;
+    if b.pop() != Some(0) {
+        return Err(std::io::Error::other("relay closed the connection"));
+    }
+    serde_json::from_slice(&b).map_err(std::io::Error::other)
+}
+
+/// Open the relay for the party on `port`; returns "bore.pub:<port>" and keeps serving players
+/// until `stop` is set.
+fn open_relay(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<String> {
+    let addr = relay_addr()?;
+    let mut ctl = TcpStream::connect_timeout(&addr, Duration::from_secs(8))?;
+    relay_send(&mut ctl, &serde_json::json!({ "Hello": 0 }))?;
+    let mut reader = BufReader::new(ctl.try_clone()?);
+    ctl.set_read_timeout(Some(Duration::from_secs(10)))?;
+    let hello = relay_read(&mut reader)?;
+    let Some(remote) = hello["Hello"].as_u64() else {
+        return Err(std::io::Error::other(format!("relay refused: {}", hello["Error"].as_str().unwrap_or("no port given"))));
+    };
+    ctl.set_read_timeout(Some(Duration::from_secs(5)))?;
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            match relay_read(&mut reader) {
+                Ok(m) => {
+                    if let Some(id) = m["Connection"].as_str().map(|s| s.to_string()) {
+                        std::thread::spawn(move || {
+                            let _ = relay_accept(addr, &id, port);
+                        });
+                    }
+                }
+                // heartbeats arrive every half second; a quiet read timeout just loops
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(_) => break,
+            }
+        }
+        let _ = ctl.shutdown(Shutdown::Both);
+    });
+    Ok(format!("{RELAY_HOST}:{remote}"))
+}
+
+/// Take one player's connection from the relay and pipe it to the local party port.
+fn relay_accept(addr: SocketAddr, id: &str, port: u16) -> std::io::Result<()> {
+    let mut up = TcpStream::connect_timeout(&addr, Duration::from_secs(8))?;
+    relay_send(&mut up, &serde_json::json!({ "Accept": id }))?;
+    let down = TcpStream::connect(("127.0.0.1", port))?;
+    let (mut up2, mut down2) = (up.try_clone()?, down.try_clone()?);
+    let mut down_w = down;
+    std::thread::spawn(move || {
+        let _ = std::io::copy(&mut up2, &mut down_w);
+        let _ = down_w.shutdown(Shutdown::Both);
+    });
+    let _ = std::io::copy(&mut down2, &mut up);
+    let _ = up.shutdown(Shutdown::Both);
+    Ok(())
 }
 
 // >> addresses
