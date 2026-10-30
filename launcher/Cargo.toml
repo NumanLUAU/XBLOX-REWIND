@@ -1,0 +1,50 @@
+[package]
+name = "xblox-rewind"
+version = "1.0.0"
+edition = "2021"
+description = "XBLOX: REWIND - a Rust recreation of the 2016 Roblox Xbox One menu, used as a desktop launcher"
+
+[[bin]]
+name = "XbloxRewind"
+path = "src/main.rs"
+
+[dependencies]
+winit = "0.30"
+wgpu = "24"
+pollster = "0.4"
+glam = { version = "0.29", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "dds"] }
+lz4_flex = "0.11"
+ruzstd = "0.7"
+fontdue = "0.9"
+rodio = { version = "0.19", default-features = false, features = ["symphonia-mp3", "vorbis", "symphonia-wav"] }
+gilrs = "0.11"
+ureq = { version = "2", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+arboard = "3"
+uuid = { version = "1", features = ["v4"] }
+urlencoding = "2"
+dirs = "5"
+open = "5"
+anyhow = "1"
+rand = "0.8"
+# Roblox serves newer meshes (v7 COREMESH v2) Draco-compressed
+draco-core = { version = "2.3", default-features = false, features = ["decoder", "legacy_bitstream_decode", "edgebreaker_valence_decode"] }
+
+[build-dependencies]
+winresource = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"

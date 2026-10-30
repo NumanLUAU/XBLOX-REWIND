@@ -1,0 +1,3 @@
+[build]
+# keep the machine responsive while compiling
+jobs = 2

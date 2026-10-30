@@ -1,0 +1,58 @@
+# build output
+launcher/target/
+*.exe
+*.pdb
+
+# local working files
+launcher/backup/
+__pycache__/
+*.py[cod]
+/AppIcon.png
+/FullLogo.png
+
+# Roblox content: only the files the launcher uses are tracked (added with -f);
+# the rest of these folders stays local
+/genericcontent/
+/xboxassets/
+/VRMenu/
+
+# assets nothing in the launcher loads any more
+/launcher/assets/glyphs/Hub/Age\ Ratings.png
+/launcher/assets/glyphs/Hub/Arrow.png
+/launcher/assets/glyphs/Hub/Audio\ Fading.png
+/launcher/assets/glyphs/Hub/Avatar\ Editor.png
+/launcher/assets/glyphs/Hub/Avatar\ Theme.png
+/launcher/assets/glyphs/Hub/Branding.png
+/launcher/assets/glyphs/Hub/Fast\ Boot.png
+/launcher/assets/glyphs/Hub/Icon_Age\ Ratings.png
+/launcher/assets/glyphs/Hub/Icon_Avatar\ Editor.png
+/launcher/assets/glyphs/Hub/Icon_Avatar\ Theme.png
+/launcher/assets/glyphs/Hub/Icon_Branding.png
+/launcher/assets/glyphs/Hub/Icon_Fast\ Boot.png
+/launcher/assets/glyphs/Hub/Icon_Icons.png
+/launcher/assets/glyphs/Hub/Icon_Lighting.png
+/launcher/assets/glyphs/Hub/Icon_Renders.png
+/launcher/assets/glyphs/Hub/Icon_Robux.png
+/launcher/assets/glyphs/Hub/Icon_Screen.png
+/launcher/assets/glyphs/Hub/Icon_Search.png
+/launcher/assets/glyphs/Hub/Icon_Theme.png
+/launcher/assets/glyphs/Hub/Icon_Uppercase\ Words.png
+/launcher/assets/glyphs/Hub/Icon_Version.png
+/launcher/assets/glyphs/Hub/Icons.png
+/launcher/assets/glyphs/Hub/Lighting.png
+/launcher/assets/glyphs/Hub/Loading\ Screen.png
+/launcher/assets/glyphs/Hub/R2016.png
+/launcher/assets/glyphs/Hub/R2017.png
+/launcher/assets/glyphs/Hub/R2019.png
+/launcher/assets/glyphs/Hub/Renders.png
+/launcher/assets/glyphs/Hub/Robux.png
+/launcher/assets/glyphs/Hub/Screen.png
+/launcher/assets/glyphs/Hub/Search.png
+/launcher/assets/glyphs/Hub/Theme.png
+/launcher/assets/glyphs/Hub/Uppercase\ Words.png
+/launcher/assets/glyphs/Hub/Version.png
+/launcher/assets/glyphs/theme/Icon_2016.png
+/launcher/assets/places/AvatarEditor.rbxl
+
+# created by the launcher on first run
+config.ini

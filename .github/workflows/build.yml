@@ -1,0 +1,56 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      # the repo's cargo config builds with 2 jobs to keep desktops responsive; CI can use them all
+      CARGO_BUILD_JOBS: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher
+
+      - name: Build
+        working-directory: launcher
+        run: cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "dist/XBLOX-REWIND"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item launcher/target/release/XbloxRewind.exe $out
+          Copy-Item Map.rbxl $out
+          foreach ($dir in "genericcontent", "xboxassets", "VRMenu") {
+            Copy-Item $dir -Destination $out -Recurse
+          }
+          New-Item -ItemType Directory -Force "$out/launcher" | Out-Null
+          Copy-Item launcher/assets -Destination "$out/launcher" -Recurse
+          Compress-Archive -Path $out -DestinationPath dist/XBLOX-REWIND-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XBLOX-REWIND-windows-x64
+          path: dist/XBLOX-REWIND
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/XBLOX-REWIND-windows-x64.zip
+          generate_release_notes: true
