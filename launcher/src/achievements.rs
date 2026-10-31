@@ -44,7 +44,7 @@ pub const DEFS: [Def; 21] = [
     Def { id: 33, name: "Archivist", description: "You earned 500 badges.", gamerscore: 200 },
     Def { id: 34, name: "Hall of Fame", description: "You earned 1,000 badges.", gamerscore: 300 },
     Def { id: 35, name: "Rare Find", description: "You earned a badge fewer than 1% of players have.", gamerscore: 50 },
-    Def { id: 36, name: "One in a Thousand", description: "You earned a badge fewer than 0.1% of players have.", gamerscore: 100 },
+    Def { id: 36, name: "One in a Thousand", description: "You earned a badge fewer than 0.1% of players have.", gamerscore: 1000 },
     Def { id: 37, name: "Busy Day", description: "You earned 5 badges in one day.", gamerscore: 30 },
     Def { id: 38, name: "Back to Back", description: "You earned badges two days in a row.", gamerscore: 20 },
     Def { id: 39, name: "Daily Grind", description: "You earned badges 7 days in a row.", gamerscore: 75 },
@@ -468,9 +468,7 @@ impl Achievements {
                 }
             },
         };
-        // Shell-style card: the overlay blue in a rounded Generic9Scale panel that slides up from
-        // the bottom, the rounded achievement art (flipping with the Xbox jewel) on the left,
-        // "Achievement Unlocked", the name, and the gamerscore on the right
+
         let slide = ease_in_out_quad((e / 0.35).min(1.0)) * ease_in_out_quad(((OPEN * 2.0 + HOLD - e) / 0.35).min(1.0));
         let (w, h) = (760.0, 132.0);
         let r = Rect::new(960.0 - w / 2.0, 1080.0 - (60.0 + h) * slide, w, h);

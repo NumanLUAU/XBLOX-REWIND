@@ -9,6 +9,7 @@ __pycache__/
 *.py[cod]
 /AppIcon.png
 /FullLogo.png
+.vs
 
 # created by the launcher on first run
 config.ini
