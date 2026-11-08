@@ -3994,9 +3994,11 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64",
  "bytemuck",
  "dirs",
  "draco-core",
+ "flate2",
  "fontdue",
  "gilrs",
  "glam",

@@ -989,6 +989,205 @@ struct Stashed {
     lobby: bool,
 }
 
+// >> web export
+// --export-web <folder>: the menu world for the website. Every visible part (primitives,
+// unions and MeshParts from the asset cache) and the smooth terrain are baked into one mesh in
+// world space and written with each zone's lighting, filter and flythrough cameras to world.js.
+
+fn export_web(dir: &Path) -> anyhow::Result<()> {
+    use glam::{Mat3, Vec3};
+    std::fs::create_dir_all(dir)?;
+    let root = find_root();
+    let content = Content::new(root.clone());
+    let dom = rbxl::parse(&std::fs::read(root.join("Map.rbxl"))?)?;
+    let mut scene = Scene::build(&dom);
+
+    // world-space triangles: position, normal, colour
+    #[derive(Default)]
+    struct Baked {
+        pos: Vec<Vec3>,
+        nrm: Vec<Vec3>,
+        col: Vec<[u8; 3]>,
+        idx: Vec<u32>,
+    }
+    impl Baked {
+        fn add(&mut self, m: &mesh::MeshData, xf: &dyn Fn(Vec3) -> Vec3, nf: &dyn Fn(Vec3) -> Vec3, color: Option<[u8; 3]>) {
+            let base = self.pos.len() as u32;
+            for v in &m.vertices {
+                self.pos.push(xf(Vec3::from(v.pos)));
+                self.nrm.push(nf(Vec3::from(v.normal)).normalize_or_zero());
+                self.col.push(color.unwrap_or([v.color[0], v.color[1], v.color[2]]));
+            }
+            self.idx.extend(m.indices.iter().map(|i| base + i));
+        }
+    }
+    let mut w = Baked::default();
+    let prims: Vec<(MeshKey, mesh::MeshData)> = vec![
+        (MeshKey::Box, mesh::box_mesh()),
+        (MeshKey::Wedge, mesh::wedge_mesh()),
+        (MeshKey::CornerWedge, mesh::corner_wedge_mesh()),
+        (MeshKey::CylX, mesh::cylinder_x(12)),
+        (MeshKey::CylY, mesh::cylinder_y(12)),
+        (MeshKey::Sphere, mesh::sphere(8, 12)),
+        (MeshKey::Head, mesh::head_mesh()),
+    ];
+    let mut cache: HashMap<u64, Option<mesh::MeshData>> = HashMap::new();
+    let (mut parts, mut skipped) = (0, 0);
+    for p in scene.parts.iter().filter(|p| p.visible && p.alpha > 0.05) {
+        let m = match p.mesh {
+            MeshKey::Asset(id) | MeshKey::Csg(id) => cache
+                .entry(id)
+                .or_insert_with(|| {
+                    let b = content.cached_asset(id)?;
+                    if matches!(p.mesh, MeshKey::Csg(_)) { mesh::parse_csg(&b).ok() } else { mesh::parse_mesh(&b).ok() }
+                })
+                .as_ref(),
+            k => prims.iter().find(|(pk, _)| *pk == k).map(|(_, m)| m),
+        };
+        let Some(m) = m else {
+            skipped += 1;
+            continue;
+        };
+        let (cf, scale, off) = (p.cf, p.mesh_scale, p.mesh_offset);
+        let rot: Mat3 = cf.rot;
+        let color = if p.flags & scene::FLAG_VERTEX_COLOR != 0 { None } else { Some([(p.color.x * 255.0) as u8, (p.color.y * 255.0) as u8, (p.color.z * 255.0) as u8]) };
+        w.add(m, &|v| cf.point(off + v * scale), &|n| rot * (n / scale.abs().max(Vec3::splat(1e-4)) * scale.signum()), color);
+        parts += 1;
+    }
+    let part_tris = w.idx.len() / 3;
+    if let Some(t) = scene.terrain.as_ref() {
+        let grid = terrain::decode(&t.grid)?;
+        // the menu background is blurred: merge terrain vertices on a coarse grid (vertex
+        // clustering) so the site gets a fraction of the triangles with the same silhouette.
+        // Terrain meshes are built relative to their chunk's centre, so they move into the world first.
+        let cell: f32 = std::env::var("XBOX_WEB_CELL").ok().and_then(|v| v.parse().ok()).unwrap_or(6.0);
+        let water_color = [(t.water_color.x * 255.0) as u8, (t.water_color.y * 255.0) as u8, (t.water_color.z * 255.0) as u8];
+        let (mut solid_all, mut water_all) = (mesh::MeshData::default(), mesh::MeshData::default());
+        for (key, solid, water) in terrain::build(&grid, &t.colors) {
+            let center = terrain::chunk_center(&grid, key);
+            for (src, dst) in [(&solid, &mut solid_all), (&water, &mut water_all)] {
+                let base = dst.vertices.len() as u32;
+                dst.vertices.extend(src.vertices.iter().map(|v| mesh::Vertex { pos: (Vec3::from(v.pos) + center).into(), ..*v }));
+                dst.indices.extend(src.indices.iter().map(|i| base + i));
+            }
+        }
+        w.add(&cluster(&solid_all, cell), &|v| v, &|n| n, None);
+        w.add(&cluster(&water_all, cell * 2.0), &|v| v, &|n| n, Some(water_color));
+    }
+    println!("parts {parts} (skipped {skipped} without a cached mesh), {part_tris} part triangles, {} terrain triangles, {} vertices", w.idx.len() / 3 - part_tris, w.pos.len());
+
+    // pack: header, bounds, quantised positions (u16x3), normals (i8x3+pad), colours (u8x3+pad), indices (u32)
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for p in &w.pos {
+        lo = lo.min(*p);
+        hi = hi.max(*p);
+    }
+    let ext = (hi - lo).max(Vec3::splat(1e-3));
+    let mut out: Vec<u8> = Vec::new();
+    out.extend_from_slice(b"XBW1");
+    out.extend_from_slice(&(w.pos.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(w.idx.len() as u32).to_le_bytes());
+    for f in [lo.x, lo.y, lo.z, ext.x, ext.y, ext.z] {
+        out.extend_from_slice(&f.to_le_bytes());
+    }
+    for p in &w.pos {
+        let q = (*p - lo) / ext * 65535.0;
+        for c in [q.x, q.y, q.z] {
+            out.extend_from_slice(&(c.round().clamp(0.0, 65535.0) as u16).to_le_bytes());
+        }
+    }
+    for n in &w.nrm {
+        out.extend_from_slice(&[(n.x * 127.0) as i8 as u8, (n.y * 127.0) as i8 as u8, (n.z * 127.0) as i8 as u8, 0]);
+    }
+    for c in &w.col {
+        out.extend_from_slice(&[c[0], c[1], c[2], 255]);
+    }
+    for i in &w.idx {
+        out.extend_from_slice(&i.to_le_bytes());
+    }
+
+    // zones: lighting, the menu filter and the flythrough path (a camera every 0.25 s)
+    let mut zones = serde_json::Map::new();
+    for zone in ["City", "Space", "Volcano"] {
+        let mut fly = Flythrough::new();
+        fly.force(&mut scene, zone, 0.0, 0.0);
+        let mut cams = Vec::new();
+        let mut filter = None;
+        let mut t = 0.0;
+        while t < 59.75 {
+            let info = fly.frame(&mut scene, t, 0.25, glam::Vec2::ZERO);
+            let (p, l) = (info.cframe.pos, info.cframe.look_vector());
+            cams.push(serde_json::json!([p.x, p.y, p.z, l.x, l.y, l.z]));
+            filter.get_or_insert(serde_json::json!({ "contrast": info.contrast, "saturation": info.saturation, "tint": [info.tint.x, info.tint.y, info.tint.z], "blur": info.blur }));
+            t += 0.25;
+        }
+        let l = scene.lighting;
+        let sun = scene.sun_direction();
+        let v3 = |v: Vec3| serde_json::json!([v.x, v.y, v.z]);
+        zones.insert(zone.into(), serde_json::json!({
+            "ambient": v3(l.ambient), "outdoorAmbient": v3(l.outdoor_ambient), "brightness": l.brightness,
+            "shiftTop": v3(l.shift_top), "shiftBottom": v3(l.shift_bottom),
+            "fogColor": v3(l.fog_color), "fogStart": l.fog_start, "fogEnd": l.fog_end,
+            "sun": v3(sun), "filter": filter, "cameras": cams,
+        }));
+    }
+    // one script the page loads with a plain <script> tag, so it also works opened from disk
+    // (file://, where fetch is not allowed): the zones, and the mesh gzipped then base64 encoded
+    use base64::Engine;
+    use std::io::Write;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    gz.write_all(&out)?;
+    let packed = base64::engine::general_purpose::STANDARD.encode(gz.finish()?);
+    let js = format!(
+        "/* generated by XbloxRewind.exe --export-web: the launcher's menu world for the website */
+window.XBLOX_WORLD = {{ zones: {}, mesh: \"{packed}\" }};
+",
+        serde_json::to_string(&serde_json::Value::Object(zones))?
+    );
+    std::fs::write(dir.join("world.js"), &js)?;
+    println!("wrote {} ({} KB, mesh {} KB raw)", dir.join("world.js").display(), js.len() / 1024, out.len() / 1024);
+    Ok(())
+}
+
+/// Vertex clustering: every vertex in the same `cell`-sized cube becomes one (averaged position,
+/// normal and colour); triangles that collapse are dropped.
+fn cluster(m: &mesh::MeshData, cell: f32) -> mesh::MeshData {
+    use glam::Vec3;
+    let mut slots: HashMap<(i32, i32, i32), u32> = HashMap::new();
+    let mut sums: Vec<(Vec3, Vec3, [u32; 3], u32)> = Vec::new();
+    let keys: Vec<u32> = m
+        .vertices
+        .iter()
+        .map(|v| {
+            let p = Vec3::from(v.pos);
+            let k = ((p.x / cell).floor() as i32, (p.y / cell).floor() as i32, (p.z / cell).floor() as i32);
+            let i = *slots.entry(k).or_insert_with(|| {
+                sums.push((Vec3::ZERO, Vec3::ZERO, [0; 3], 0));
+                (sums.len() - 1) as u32
+            });
+            let e = &mut sums[i as usize];
+            e.0 += p;
+            e.1 += Vec3::from(v.normal);
+            for c in 0..3 {
+                e.2[c] += v.color[c] as u32;
+            }
+            e.3 += 1;
+            i
+        })
+        .collect();
+    let mut out = mesh::MeshData::default();
+    for (p, n, c, count) in &sums {
+        out.vertices.push(mesh::Vertex { pos: (*p / *count as f32).into(), normal: n.normalize_or_zero().into(), uv: [0.0; 2], color: [(c[0] / count) as u8, (c[1] / count) as u8, (c[2] / count) as u8, 255] });
+    }
+    for t in m.indices.chunks(3) {
+        let k = [keys[t[0] as usize], keys[t[1] as usize], keys[t[2] as usize]];
+        if k[0] != k[1] && k[1] != k[2] && k[0] != k[2] {
+            out.indices.extend(k);
+        }
+    }
+    out
+}
+
 fn dump(path: &str, filter: Option<&String>) -> anyhow::Result<()> {
     let dom = rbxl::parse(&std::fs::read(path)?)?;
     for (i, inst) in dom.instances.iter().enumerate() {
@@ -1061,6 +1260,9 @@ fn main() -> anyhow::Result<()> {
     }
     if args.get(1).map(|a| a == "--dump").unwrap_or(false) {
         return dump(&args[2], args.get(3));
+    }
+    if args.get(1).map(|a| a == "--export-web").unwrap_or(false) {
+        return export_web(Path::new(args.get(2).map(String::as_str).unwrap_or("web")));
     }
     let root = find_root();
     let content = Content::new(root.clone());

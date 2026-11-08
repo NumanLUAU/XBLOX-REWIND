@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<!--
+	written by: @corescripts
+-->
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>XBLOX: REWIND</title>
+	<meta name="description" content="Relive the past as if you were in 2016! A Rust recreation of the Roblox UI for Xbox consoles, with extra features that replace the need for a browser or the Roblox app home.">
+	<meta name="theme-color" content="#0a1a24">
+	<meta property="og:title" content="XBLOX: REWIND">
+	<meta property="og:description" content="Relive the past as if you were in 2016! The 2016 Roblox Xbox menu, rebuilt in Rust for Windows.">
+	<meta property="og:image" content="assets/shots/hub.jpg">
+	<link rel="icon" href="assets/icon.png">
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<!-- >> background: the menu world, rendered live -->
+	<canvas id="world" aria-hidden="true"></canvas>
+	<div class="shade" aria-hidden="true"></div>
+
+	<!-- >> engagement screen -->
+	<section id="engage" class="engage">
+		<img class="engage-logo" src="assets/logo.png" alt="XBLOX: REWIND">
+		<p class="engage-tag">Relive the past as if you were in 2016!</p>
+		<p class="engage-hint">Press <span class="glyph glyph-a">A</span> to Begin</p>
+		<p class="engage-sub">or click anywhere</p>
+	</section>
+
+	<!-- >> shell -->
+	<main id="shell" class="shell" hidden>
+		<header class="top">
+			<img class="top-logo" src="assets/logo.png" alt="XBLOX: REWIND">
+			<nav class="tabs" role="tablist">
+				<button class="tab" data-nav data-tab="home" role="tab">Home</button>
+				<button class="tab" data-nav data-tab="features" role="tab">Features</button>
+				<button class="tab" data-nav data-tab="screenshots" role="tab">Screenshots</button>
+				<button class="tab" data-nav data-tab="download" role="tab">Download</button>
+			</nav>
+			<button id="mute" class="mute" data-nav aria-label="Mute music" title="Music">&#9835;</button>
+		</header>
+
+		<!-- >> home -->
+		<section class="pane" data-pane="home">
+			<h2 class="label">Relive it like it never left</h2>
+			<div class="home-grid">
+				<a class="tile tile-hero" data-nav data-release-link href="https://github.com/NumanLUAU/XBLOX-REWIND/releases/latest" target="_blank" rel="noopener">
+					<img src="assets/shots/tile-hub.jpg" alt="" loading="lazy">
+					<span class="tile-text">
+						<span class="tile-title">Download for Windows</span>
+						<span class="tile-sub" data-release-line>Latest release</span>
+					</span>
+				</a>
+				<a class="tile" data-nav href="https://github.com/NumanLUAU/XBLOX-REWIND" target="_blank" rel="noopener">
+					<img src="assets/shots/tile-avatar-editor.jpg" alt="" loading="lazy">
+					<span class="tile-text"><span class="tile-title">Source on GitHub</span><span class="tile-sub">Rust, wgpu, open source</span></span>
+				</a>
+				<a class="tile" data-nav href="https://discord.gg/F7Nzshp9VT" target="_blank" rel="noopener">
+					<img src="assets/shots/tile-menu-world.jpg" alt="" loading="lazy">
+					<span class="tile-text"><span class="tile-title">Join the Discord</span><span class="tile-sub">Bugs, ideas and parties</span></span>
+				</a>
+				<a class="tile" data-nav href="https://github.com/NumanLUAU/XBLOX-REWIND/releases" target="_blank" rel="noopener">
+					<img src="assets/shots/tile-robux.jpg" alt="" loading="lazy">
+					<span class="tile-text"><span class="tile-title">What's new</span><span class="tile-sub">Every release and its notes</span></span>
+				</a>
+			</div>
+			<p class="blurb">Back in 2016, Roblox on the Xbox One had its own menu: big tiles, a slow 3D city behind everything, the blue overlay, the sounds. <b>XBLOX: REWIND</b> rebuilds that menu as a native Windows app, screen by screen, and hooks it up to your real Roblox account. When you press Play, the game opens in the normal Roblox player.</p>
+		</section>
+
+		<!-- >> features -->
+		<section class="pane" data-pane="features" hidden>
+			<h2 class="label">Features</h2>
+			<div class="cards">
+				<article class="card" data-nav><h3>The 2016 menu</h3><p>Home, Avatar, Games, Friends and ROBUX, laid out like the console app, with search, game pages, favorites and live friend presence.</p></article>
+				<article class="card" data-nav><h3>A live 3D world</h3><p>The City, Space and Volcano flythrough from the original app, with Roblox-style lighting, skyboxes, terrain, unions and meshes.</p></article>
+				<article class="card" data-nav><h3>The avatar editor</h3><p>The 2018 console editor in 3D. Changes show instantly, body scaling matches Studio, and UGC bodies, dynamic heads and layered clothing all work.</p></article>
+				<article class="card" data-nav><h3>Quick Login</h3><p>Sign in with a code or QR from a device you are already signed in on. A .ROBLOSECURITY cookie works too, stored encrypted.</p></article>
+				<article class="card" data-nav><h3>Parties online</h3><p>Host a party and share the address it gives you. Friends join from anywhere, and everyone follows the host into the same server.</p></article>
+				<article class="card" data-nav><h3>Achievements</h3><p>The 11 original Xbox achievements plus your Roblox badges, scored by rarity, with popups when you earn them in game.</p></article>
+				<article class="card" data-nav><h3>Every year, 2015 to 2023</h3><p>Presets and settings for themes, logos, loading screens, lighting, Robux icons and button glyphs.</p></article>
+				<article class="card" data-nav><h3>Revivals too</h3><p>One line in config.ini points the whole launcher, sign-in included, at another site instead of roblox.com.</p></article>
+			</div>
+		</section>
+
+		<!-- >> screenshots -->
+		<section class="pane" data-pane="screenshots" hidden>
+			<h2 class="label">Screenshots</h2>
+			<div class="shots">
+				<button class="shot" data-nav data-full="assets/shots/hub.jpg"><img src="assets/shots/hub.jpg" alt="The hub" loading="lazy"></button>
+				<button class="shot" data-nav data-full="assets/shots/menu-world.jpg"><img src="assets/shots/menu-world.jpg" alt="The menu world" loading="lazy"></button>
+				<button class="shot" data-nav data-full="assets/shots/avatar-editor.jpg"><img src="assets/shots/avatar-editor.jpg" alt="The avatar editor" loading="lazy"></button>
+				<button class="shot" data-nav data-full="assets/shots/robux.jpg"><img src="assets/shots/robux.jpg" alt="The ROBUX tab" loading="lazy"></button>
+				<button class="shot" data-nav data-full="assets/shots/achievements.jpg"><img src="assets/shots/achievements.jpg" alt="Achievements" loading="lazy"></button>
+				<button class="shot" data-nav data-full="assets/shots/presets.jpg"><img src="assets/shots/presets.jpg" alt="Presets" loading="lazy"></button>
+			</div>
+		</section>
+
+		<!-- >> download -->
+		<section class="pane" data-pane="download" hidden>
+			<h2 class="label">Download</h2>
+			<div class="download">
+				<div class="steps">
+					<p class="release" data-release-line>Latest release</p>
+					<ol>
+						<li>Download <code>XBLOX-REWIND-windows-x64.zip</code> from the latest release.</li>
+						<li>Unzip it anywhere and run <b>XbloxRewind.exe</b>.</li>
+						<li>Pick your settings in the hub, or just press <b>Begin</b>, then sign in with Quick Login.</li>
+					</ol>
+					<div class="buttons">
+						<a class="button button-primary" data-nav data-release-link href="https://github.com/NumanLUAU/XBLOX-REWIND/releases/latest" target="_blank" rel="noopener">Download</a>
+						<a class="button" data-nav href="https://github.com/NumanLUAU/XBLOX-REWIND/releases" target="_blank" rel="noopener">All releases</a>
+						<a class="button" data-nav href="https://github.com/NumanLUAU/XBLOX-REWIND" target="_blank" rel="noopener">Source</a>
+					</div>
+				</div>
+				<div class="needs">
+					<h3>Requirements</h3>
+					<ul>
+						<li>Windows 10 or 11, 64-bit</li>
+						<li>A GPU with DirectX 12 or Vulkan</li>
+						<li>The Roblox player, to join games</li>
+					</ul>
+					<h3>Will not do</h3>
+					<ul>
+						<li>Buy Robux or avatar items</li>
+						<li>Touch your real Robux balance</li>
+						<li>Send your login anywhere but Roblox</li>
+					</ul>
+				</div>
+			</div>
+		</section>
+
+		<!-- >> footer: credits and hints -->
+		<footer class="bottom">
+			<p class="credits">Created by Numan &middot; Discord @corescripts &middot; GitHub <a href="https://github.com/NumanLUAU" target="_blank" rel="noopener">@numanluau</a></p>
+			<p class="hints"><span class="glyph glyph-a">A</span> Select <span class="glyph glyph-b">B</span> Back</p>
+		</footer>
+		<p class="disclaimer">A fan project. Not made by, affiliated with or endorsed by Roblox Corporation or Microsoft.</p>
+	</main>
+
+	<!-- >> screenshot viewer -->
+	<div id="viewer" class="viewer" hidden><img alt=""></div>
+
+	<script src="assets/world/world.js" defer></script>
+	<script src="main.js" defer></script>
+</body>
+</html>
+<!-- >> end << -->
