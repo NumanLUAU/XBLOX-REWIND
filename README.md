@@ -228,6 +228,8 @@ with the nearest cage points.
 Bug reports and ideas are welcome in [Issues](https://github.com/NumanLUAU/XBLOX-REWIND/issues),
 or come say hi on the [Discord server](https://discord.gg/F7Nzshp9VT).
 
+**just adding this for search indexing, [DISCOVERY.md](https://github.com/NumanLUAU/XBLOX-REWIND/blob/main/DISCOVERY.md)**
+
 ## Credits
 
 **XBLOX: REWIND** was created by **Numan**.
