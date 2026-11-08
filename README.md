@@ -213,6 +213,10 @@ with the nearest cage points.
 
 </details>
 
+## AI Disclosure
+
+AI was USED to assist with the **avatar rig building**, the rest of the menu, lighting and terrain was done by me by hand.
+
 ## Roadmap
 
 - [x] Menu, game pages, search, friends and ROBUX store
@@ -233,6 +237,8 @@ or come say hi on the [Discord server](https://discord.gg/F7Nzshp9VT).
 ## Credits
 
 **XBLOX: REWIND** was created by **Numan**.
+
+**Main Menu Hub** and **Screenshots Ideas** goes to [**Xbox UI Launcher**](https://www.roblox.com/games/13086985452/Xbox-UI-Launcher) on Roblox by **LuaWiz**
 
 | | |
 |---|---|
