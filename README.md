@@ -5,6 +5,7 @@
 **Relive the past as if you were in 2016!**
 
 A Rust recreation of the Roblox UI for Xbox consoles, with extra features that replace the need for a browser or the Roblox app home (besides buying avatar items).
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/H5L62ABK98)
 
 [![Build](https://github.com/NumanLUAU/XBLOX-REWIND/actions/workflows/build.yml/badge.svg)](https://github.com/NumanLUAU/XBLOX-REWIND/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/NumanLUAU/XBLOX-REWIND?label=download&color=e2231a)](https://github.com/NumanLUAU/XBLOX-REWIND/releases/latest)
